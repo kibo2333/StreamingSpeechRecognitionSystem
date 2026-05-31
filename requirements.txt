@@ -1,0 +1,6 @@
+flask==3.0.0
+flask-cors==4.0.0
+tencentcloud-sdk-python==3.0.1130
+pyyaml==6.0.1
+python-dotenv==1.0.0
+pyautogui==0.9.54

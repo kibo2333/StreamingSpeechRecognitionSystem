@@ -1,0 +1,2012 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>语音输入服务</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 600px;
+            padding: 40px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .status-bar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 10px;
+        }
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+        .status-dot.connected { background: #4CAF50; }
+        .status-dot.error { background: #f44336; }
+        .status-dot.streaming { background: #2196F3; animation: pulse 1s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .mode-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .toggle-switch {
+            position: relative;
+            width: 50px;
+            height: 26px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 26px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+        .mode-label {
+            font-size: 14px;
+            color: #666;
+        }
+        .result-area {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            min-height: 150px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .result-text {
+            color: #333;
+            line-height: 1.6;
+            font-size: 16px;
+            word-wrap: break-word;
+        }
+        .final-text { color: #333; }
+        .interim { color: #999; font-style: italic; }
+        .error-text { color: #f44336; }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-record {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-record:hover { background: #45a049; }
+        .btn-record.recording {
+            background: #f44336;
+            animation: pulse 1s infinite;
+        }
+        .btn-record:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-stop {
+            background: #ff9800;
+            color: white;
+        }
+        .btn-stop:hover { background: #e68a00; }
+        .btn-stop:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-type {
+            background: #2196F3;
+            color: white;
+        }
+        .btn-type:hover { background: #1976D2; }
+        .btn-type:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-clear {
+            background: #9e9e9e;
+            color: white;
+        }
+        .btn-clear:hover { background: #757575; }
+        .error-message {
+            color: #f44336;
+            text-align: center;
+            margin-top: 10px;
+            padding: 10px;
+            background: #ffebee;
+            border-radius: 5px;
+            display: none;
+        }
+        .error-message.show { display: block; }
+        .interim {
+            color: #2196F3;
+            font-style: italic;
+        }
+        .info {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            margin-top: 20px;
+        }
+        .audio-meter {
+            width: 100%;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 15px;
+            position: relative;
+        }
+        .audio-meter-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4CAF50, #8BC34A, #CDDC39, #FFEB3B, #FF9800, #f44336);
+            transition: width 0.05s ease;
+            border-radius: 15px;
+        }
+        .audio-meter-label {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 12px;
+            color: #666;
+            font-weight: bold;
+            text-shadow: 0 0 2px white;
+        }
+        .silence-indicator {
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+            height: 20px;
+            margin-bottom: 10px;
+        }
+        .silence-indicator.active {
+            color: #FF9800;
+        }
+        .silence-indicator.silent {
+            color: #4CAF50;
+        }
+        .cost-control-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: linear-gradient(135deg, #fff9e6 0%, #fff5d6 100%);
+            border-radius: 10px;
+            border: 1px solid #ffe082;
+        }
+        .cost-control-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #8b6914;
+        }
+        .cost-mode-toggle {
+            display: flex;
+            gap: 15px;
+        }
+        .cost-mode-label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #666;
+        }
+        .cost-mode-label input[type="radio"] {
+            margin: 0;
+            accent-color: #ff9800;
+        }
+        .cost-mode-label span {
+            font-weight: 500;
+        }
+        .cost-stats {
+            display: flex;
+            gap: 20px;
+            font-size: 12px;
+            color: #888;
+        }
+        .cost-stats span {
+            padding: 4px 8px;
+            background: rgba(255,255,255,0.8);
+            border-radius: 4px;
+        }
+        .hotword-section {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 1px solid #e9ecef;
+        }
+        .hotword-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #333;
+        }
+        .scene-select {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+            background: white;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .hotword-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        .hotword-tag {
+            padding: 4px 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            font-size: 12px;
+        }
+        .hotword-current {
+            font-size: 12px;
+            color: #666;
+        }
+        .network-status-bar {
+            padding: 12px 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            display: none;
+        }
+        .network-status-bar.offline {
+            background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+            color: white;
+        }
+        .network-status-bar.pending {
+            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+            color: #333;
+        }
+        .command-hint {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+        }
+        .word-candidate-popup {
+            position: absolute;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            padding: 8px;
+            min-width: 150px;
+            z-index: 1001;
+            display: none;
+        }
+        .word-candidate-item {
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #333;
+            transition: background 0.2s;
+        }
+        .word-candidate-item:hover {
+            background: #f0f0f0;
+        }
+        .word-candidate-item:first-child {
+            font-weight: 600;
+            background: #f5f7fa;
+        }
+        .word-candidate-divider {
+            height: 1px;
+            background: #eee;
+            margin: 8px 0;
+        }
+        .word-candidate-respeak {
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #667eea;
+            text-align: center;
+            transition: background 0.2s;
+        }
+        .word-candidate-respeak:hover {
+            background: #f0f4ff;
+        }
+        .word-highlight {
+            background: #fff3cd;
+            padding: 2px 4px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .word-highlight:hover {
+            background: #ffeeba;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 语音输入服务 v2.0</h1>
+
+        <div class="status-bar">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">未连接</span>
+        </div>
+
+        <div class="mode-toggle">
+            <span class="mode-label">流式模式</span>
+            <label class="toggle-switch">
+                <input type="checkbox" id="streamingMode">
+                <span class="slider"></span>
+            </label>
+            <span class="mode-label" id="modeText">普通模式</span>
+        </div>
+
+        <div class="result-area" id="resultArea">
+            <div class="result-text" id="resultText">
+                <span class="final-text"></span>
+            </div>
+        </div>
+
+        <div class="audio-meter" id="audioMeter" style="display: none;">
+            <div class="audio-meter-fill" id="audioMeterFill"></div>
+            <div class="audio-meter-label" id="audioMeterLabel">0%</div>
+        </div>
+
+        <div class="silence-indicator" id="silenceIndicator"></div>
+
+        <div class="error-message" id="errorMessage"></div>
+
+        <div class="word-candidate-popup" id="wordCandidatePopup">
+            <div class="word-candidate-items" id="wordCandidateItems"></div>
+            <div class="word-candidate-divider"></div>
+            <div class="word-candidate-respeak" id="respeakBtn">🔄 重新说这句</div>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn-record" id="recordBtn" onclick="startRecording()">
+                🎙️ 开始录音
+            </button>
+            <button class="btn-stop" id="stopBtn" onclick="stopRecording()" disabled>
+                ⏹️ 停止
+            </button>
+            <button class="btn-type" id="typeBtn" onclick="typeText()" disabled>
+                ⌨️ 输入文字
+            </button>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn-clear" onclick="clearText()">
+                🗑️ 清空
+            </button>
+        </div>
+
+        <div class="cost-control-section">
+            <div class="cost-control-header">
+                <span>💰 成本控制</span>
+                <div class="cost-mode-toggle">
+                    <label class="cost-mode-label">
+                        <input type="radio" name="costMode" value="economy" onchange="setCostMode('economy')">
+                        <span>省流量</span>
+                    </label>
+                    <label class="cost-mode-label">
+                        <input type="radio" name="costMode" value="balanced" checked onchange="setCostMode('balanced')">
+                        <span>平衡</span>
+                    </label>
+                    <label class="cost-mode-label">
+                        <input type="radio" name="costMode" value="high" onchange="setCostMode('high')">
+                        <span>高精度</span>
+                    </label>
+                </div>
+            </div>
+            <div class="cost-stats" id="costStats">
+                <span>请求: <span id="statRequests">0</span></span>
+                <span>缓存命中: <span id="statCache">0</span></span>
+                <span>过滤: <span id="statFiltered">0</span></span>
+            </div>
+        </div>
+
+        <div class="hotword-section">
+            <div class="hotword-header">
+                <span>🔥 场景模式</span>
+                <select id="sceneSelect" class="scene-select" onchange="switchScene(this.value)">
+                    <option value="default">默认模式</option>
+                    <option value="meeting">会议模式</option>
+                    <option value="medical">医疗模式</option>
+                    <option value="tech">科技模式</option>
+                    <option value="education">教育模式</option>
+                    <option value="finance">金融模式</option>
+                </select>
+            </div>
+            <div class="hotword-tags" id="hotwordTags"></div>
+            <div class="hotword-current" id="hotwordCurrent"></div>
+        </div>
+
+        <div class="info">
+            <p>💡 提示：使用Chrome或Firefox浏览器效果最佳</p>
+            <p>普通模式：录音完成后自动识别 | 流式模式：实时识别</p>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/socket.io@4.7.2/client-dist/socket.io.min.js"></script>
+    <script>
+        console.log('[DEBUG] Script started');
+        
+        let socket;
+        let audioContext;
+        let mediaStream;
+        let audioChunks = [];
+        let isStreaming = false;
+        let finalTranscript = '';
+        let interimTranscript = '';
+        let mediaRecorder;
+        let pcmStream = null;
+        let scriptProcessor;
+        let recognition = null;
+        let analyser = null;
+        let audioRecorder = null;
+        let audioMeterFill = null;
+        let audioMeterLabel = null;
+        let audioMeterElement = null;
+        let silenceIndicatorElement = null;
+        let animationFrameId = null;
+        let silenceStartTime = null;
+        let lastAudioTime = 0;
+        const SILENCE_THRESHOLD = 0.10;
+        const SILENCE_DURATION = 2000;
+        const NOISE_FLOOR_SAMPLES = 10;
+        const MIN_RECORDING_DURATION = 1000;
+        const STABILITY_THRESHOLD = 500;
+        const REQUIRED_SILENT_SAMPLES = 5;
+        let noiseFloor = 0;
+        let noiseFloorSamples = [];
+        let recordingStartTime = null;
+        let lastNonSilentTime = null;
+        let consecutiveSilentSamples = 0;
+        let commandHintElement = null;
+        let wordCandidatePopup = null;
+        let wordCandidateItems = null;
+        let respeakBtn = null;
+        let longPressTimer = null;
+        let selectedWord = null;
+        let selectedWordIndex = null;
+        let lastTouchTime = 0;
+        let isOnline = navigator.onLine;
+        let networkStatusBar = null;
+        let pendingAudioQueue = [];
+        let isProcessingQueue = false;
+        let recognitionTimeout = null;
+        const REQUEST_TIMEOUT = 2000;
+        const STORAGE_KEY = 'pendingAudioQueue';
+        
+        const MIN_AUDIO_DURATION = 500;
+        const MIN_TEXT_LENGTH = 2;
+        const MIN_CONFIDENCE = 0.6;
+        const CACHE_SIZE = 20;
+        const CACHE_EXPIRE = 5 * 60 * 1000;
+        
+        let costMode = 'balanced';
+        let audioCache = [];
+        let costStats = {
+            totalRequests: 0,
+            filteredByDuration: 0,
+            filteredByCache: 0,
+            filteredByConfidence: 0,
+            validRequests: 0
+        };
+
+        class LRUCache {
+            constructor(maxSize) {
+                this.cache = new Map();
+                this.maxSize = maxSize;
+            }
+
+            get(key) {
+                const item = this.cache.get(key);
+                if (!item) return null;
+                
+                if (Date.now() > item.expire) {
+                    this.cache.delete(key);
+                    return null;
+                }
+                
+                this.cache.delete(key);
+                this.cache.set(key, item);
+                
+                return item.value;
+            }
+
+            set(key, value, expireMs = CACHE_EXPIRE) {
+                if (this.cache.size >= this.maxSize) {
+                    const firstKey = this.cache.keys().next().value;
+                    this.cache.delete(firstKey);
+                }
+                
+                this.cache.set(key, {
+                    value: value,
+                    expire: Date.now() + expireMs,
+                    timestamp: Date.now()
+                });
+            }
+
+            has(key) {
+                const item = this.cache.get(key);
+                if (!item) return false;
+                if (Date.now() > item.expire) {
+                    this.cache.delete(key);
+                    return false;
+                }
+                return true;
+            }
+
+            size() {
+                return this.cache.size;
+            }
+
+            clear() {
+                this.cache.clear();
+            }
+        }
+
+        const recognitionCache = new LRUCache(CACHE_SIZE);
+
+        function setCostMode(mode) {
+            costMode = mode;
+            console.log(`[Cost Control] Mode changed to: ${mode}`);
+            updateCostModeDisplay();
+        }
+
+        function getCostMode() {
+            return costMode;
+        }
+
+        function getModeSettings() {
+            const settings = {
+                high: {
+                    minDuration: 0,
+                    minTextLength: 0,
+                    minConfidence: 0,
+                    useCache: false
+                },
+                balanced: {
+                    minDuration: MIN_AUDIO_DURATION,
+                    minTextLength: MIN_TEXT_LENGTH,
+                    minConfidence: MIN_CONFIDENCE,
+                    useCache: true
+                },
+                economy: {
+                    minDuration: MIN_AUDIO_DURATION * 2,
+                    minTextLength: MIN_TEXT_LENGTH,
+                    minConfidence: MIN_CONFIDENCE + 0.1,
+                    useCache: true
+                }
+            };
+            return settings[costMode] || settings.balanced;
+        }
+
+        function shouldSendAudio(audioChunks) {
+            if (audioChunks.length === 0) {
+                costStats.filteredByDuration++;
+                return false;
+            }
+
+            const settings = getModeSettings();
+            const totalSize = audioChunks.reduce((sum, chunk) => sum + chunk.size, 0);
+            const duration = estimateDuration(totalSize);
+            
+            if (duration < settings.minDuration) {
+                costStats.filteredByDuration++;
+                console.log(`[Cost Control] Audio too short: ${duration}ms (min: ${settings.minDuration}ms), discarding`);
+                return false;
+            }
+
+            return true;
+        }
+
+        function estimateDuration(totalSize) {
+            const bytesPerSecond = 16000 * 16 / 8;
+            return Math.round((totalSize / bytesPerSecond) * 1000);
+        }
+
+        function checkCache(text) {
+            const trimmed = text.trim();
+            if (!trimmed) return null;
+            
+            const cacheKey = trimmed.toLowerCase();
+            const cached = recognitionCache.get(cacheKey);
+            
+            if (cached) {
+                costStats.filteredByCache++;
+                console.log(`[Cost Control] Cache hit: "${trimmed}"`);
+                return cached;
+            }
+            
+            return null;
+        }
+
+        function addToCache(text, result) {
+            const trimmed = text.trim().toLowerCase();
+            if (trimmed && result && result.success) {
+                recognitionCache.set(trimmed, result);
+                console.log(`[Cost Control] Added to cache: "${trimmed}"`);
+            }
+        }
+
+        function isResultValid(result) {
+            if (!result || !result.success) return false;
+            
+            const text = result.processed || result.text || '';
+            if (text.length < MIN_TEXT_LENGTH) {
+                costStats.filteredByConfidence++;
+                return false;
+            }
+
+            const confidence = result.confidence || 1;
+            if (confidence < MIN_CONFIDENCE) {
+                costStats.filteredByConfidence++;
+                return false;
+            }
+
+            costStats.validRequests++;
+            return true;
+        }
+
+        function getCostStats() {
+            return costStats;
+        }
+
+        function resetCostStats() {
+            costStats = {
+                totalRequests: 0,
+                filteredByDuration: 0,
+                filteredByCache: 0,
+                filteredByConfidence: 0,
+                validRequests: 0
+            };
+        }
+
+        function initCostControl() {
+            const modeToggle = document.getElementById('costModeToggle');
+            if (modeToggle) {
+                modeToggle.addEventListener('change', (e) => {
+                    setCostMode(e.target.value);
+                });
+            }
+        }
+
+        function updateCostModeDisplay() {
+            const modeText = document.getElementById('costModeText');
+            if (modeText) {
+                const modeNames = {
+                    'high': '高精度模式',
+                    'balanced': '平衡模式',
+                    'economy': '省流量模式'
+                };
+                modeText.textContent = modeNames[costMode] || '平衡模式';
+            }
+        }
+
+        function updateCostStatsDisplay() {
+            const statRequests = document.getElementById('statRequests');
+            const statCache = document.getElementById('statCache');
+            const statFiltered = document.getElementById('statFiltered');
+            
+            if (statRequests) statRequests.textContent = costStats.totalRequests;
+            if (statCache) statCache.textContent = costStats.filteredByCache;
+            if (statFiltered) statFiltered.textContent = costStats.filteredByDuration + costStats.filteredByConfidence;
+        }
+
+        function initNetworkHandling() {
+            networkStatusBar = document.createElement('div');
+            networkStatusBar.id = 'networkStatusBar';
+            networkStatusBar.className = 'network-status-bar';
+            document.querySelector('.container').insertBefore(networkStatusBar, document.querySelector('.container').firstChild);
+
+            window.addEventListener('online', handleOnline);
+            window.addEventListener('offline', handleOffline);
+
+            updateNetworkStatusBar();
+            loadPendingQueue();
+        }
+
+        function handleOnline() {
+            console.log('[Network] Connection restored');
+            isOnline = true;
+            updateNetworkStatusBar();
+            showCommandHint('网络已恢复，正在处理未识别音频...');
+            processPendingQueue();
+        }
+
+        function handleOffline() {
+            console.log('[Network] Connection lost');
+            isOnline = false;
+            updateNetworkStatusBar();
+            showCommandHint('网络已断开，音频将暂存待识别');
+        }
+
+        function updateNetworkStatusBar() {
+            if (!networkStatusBar) return;
+
+            if (!isOnline) {
+                networkStatusBar.className = 'network-status-bar offline';
+                networkStatusBar.innerHTML = '📡 网络已断开 - 音频已保存，联网后自动转写';
+                networkStatusBar.style.display = 'block';
+            } else if (pendingAudioQueue.length > 0) {
+                networkStatusBar.className = 'network-status-bar pending';
+                networkStatusBar.innerHTML = `⏳ 有 ${pendingAudioQueue.length} 个音频待识别，正在处理...`;
+                networkStatusBar.style.display = 'block';
+            } else {
+                networkStatusBar.style.display = 'none';
+            }
+        }
+
+        function savePendingQueue() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(pendingAudioQueue));
+                console.log(`[Network] Queue saved: ${pendingAudioQueue.length} items`);
+            } catch (e) {
+                console.error('[Network] Failed to save queue:', e);
+            }
+        }
+
+        function loadPendingQueue() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    pendingAudioQueue = JSON.parse(saved);
+                    console.log(`[Network] Queue loaded: ${pendingAudioQueue.length} items`);
+                    if (isOnline && pendingAudioQueue.length > 0) {
+                        processPendingQueue();
+                    }
+                }
+            } catch (e) {
+                console.error('[Network] Failed to load queue:', e);
+                pendingAudioQueue = [];
+            }
+        }
+
+        function addToPendingQueue(audioData, format) {
+            const item = {
+                id: Date.now(),
+                audio: audioData,
+                format: format,
+                timestamp: new Date().toISOString()
+            };
+            pendingAudioQueue.push(item);
+            savePendingQueue();
+            updateNetworkStatusBar();
+            console.log(`[Network] Audio added to queue: ${item.id}`);
+        }
+
+        async function processPendingQueue() {
+            if (isProcessingQueue || !isOnline || pendingAudioQueue.length === 0) {
+                return;
+            }
+
+            isProcessingQueue = true;
+            console.log(`[Network] Processing queue: ${pendingAudioQueue.length} items`);
+
+            while (pendingAudioQueue.length > 0 && isOnline) {
+                const item = pendingAudioQueue[0];
+                console.log(`[Network] Processing item: ${item.id}`);
+
+                try {
+                    await recognizeAudioWithTimeout(item.audio, item.format);
+                    pendingAudioQueue.shift();
+                    savePendingQueue();
+                    updateNetworkStatusBar();
+                } catch (e) {
+                    console.error(`[Network] Failed to process item ${item.id}:`, e);
+                    break;
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            isProcessingQueue = false;
+
+            if (pendingAudioQueue.length === 0) {
+                showCommandHint('所有音频已识别完成！');
+            }
+        }
+
+        async function recognizeAudioWithTimeout(audioData, format, hotwords=null) {
+            return new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    console.log('[Network] Request timeout, degrading...');
+                    addToPendingQueue(audioData, format);
+                    reject(new Error('Request timeout'));
+                }, REQUEST_TIMEOUT);
+
+                const requestBody = { audio: audioData, format: format };
+                if (hotwords) {
+                    requestBody.hotwords = hotwords;
+                    console.log('[Hotword] Sending hotwords:', hotwords);
+                }
+
+                fetch('/api/recognize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    clearTimeout(timeoutId);
+                    resolve(data);
+                })
+                .catch(err => {
+                    clearTimeout(timeoutId);
+                    reject(err);
+                });
+            });
+        }
+
+        async function checkNetworkAndRecognize(audioData, format, hotwords=null) {
+            if (!isOnline) {
+                console.log('[Network] Offline, adding to queue');
+                addToPendingQueue(audioData, format);
+                showError('网络已断开，音频已保存，联网后自动转写');
+                return null;
+            }
+
+            try {
+                const result = await recognizeAudioWithTimeout(audioData, format, hotwords);
+                return result;
+            } catch (e) {
+                if (e.message === 'Request timeout') {
+                    showError('网络不佳，音频已保存，联网后自动转写');
+                }
+                throw e;
+            }
+        }
+
+        const HOTWORD_SCENES = {
+            default: {
+                name: '默认模式',
+                hotwords: []
+            },
+            meeting: {
+                name: '会议模式',
+                hotwords: ['会议', '议程', '决议', '表决', '纪要', '参会', '发言', '主持', '议题', '通过', '反对', '弃权', '列席', '缺席', '提案', '讨论', '总结']
+            },
+            medical: {
+                name: '医疗模式',
+                hotwords: ['诊断', '处方', '病史', '症状', '体征', '血压', '血糖', '体温', '心率', '药品', '药物', '剂量', '用法', '疗程', '复查', '随访', '禁忌', '过敏', '手术', '麻醉', '检验', '检查']
+            },
+            tech: {
+                name: '科技模式',
+                hotwords: ['Transformer', 'BERT', 'GPT', 'LSTM', 'CNN', '神经网络', '深度学习', '机器学习', '人工智能', '多模态', '端到端', '预训练', '微调', '推理', '部署', '优化', '模型', '参数', '训练', '测试', '验证']
+            },
+            education: {
+                name: '教育模式',
+                hotwords: ['学生', '教师', '课程', '作业', '考试', '成绩', '课堂', '教学', '学习', '复习', '预习', '作业', '论文', '答辩', '毕业', '入学', '选课', '学分', '教室', '图书馆']
+            },
+            finance: {
+                name: '金融模式',
+                hotwords: ['股票', '基金', '债券', '投资', '理财', '银行', '利率', '汇率', '利息', '贷款', '存款', '保险', '风险', '收益', '亏损', '市场', '行情', '交易', '结算', '账户']
+            }
+        };
+
+        let currentScene = 'default';
+        let hotwordTags = null;
+        let hotwordCurrent = null;
+
+        function initHotwordUI() {
+            hotwordTags = document.getElementById('hotwordTags');
+            hotwordCurrent = document.getElementById('hotwordCurrent');
+            updateHotwordDisplay();
+        }
+
+        function switchScene(scene) {
+            currentScene = scene;
+            updateHotwordDisplay();
+            console.log(`[Hotword] Switched to scene: ${scene}, hotwords:`, getHotwords());
+        }
+
+        function getHotwords() {
+            return HOTWORD_SCENES[currentScene]?.hotwords || [];
+        }
+
+        function getHotwordsString() {
+            return getHotwords().join(',');
+        }
+
+        function updateHotwordDisplay() {
+            if (!hotwordTags || !hotwordCurrent) return;
+
+            const hotwords = getHotwords();
+            
+            hotwordTags.innerHTML = '';
+            hotwords.slice(0, 10).forEach(word => {
+                const tag = document.createElement('span');
+                tag.className = 'hotword-tag';
+                tag.textContent = word;
+                hotwordTags.appendChild(tag);
+            });
+
+            if (hotwords.length > 10) {
+                const more = document.createElement('span');
+                more.className = 'hotword-tag';
+                more.textContent = `+${hotwords.length - 10} more`;
+                hotwordTags.appendChild(more);
+            }
+
+            hotwordCurrent.textContent = `当前热词: ${hotwords.length} 个`;
+        }
+
+        const CANDIDATE_WORDS = {
+            '你': ['你', '您', '泥', '拟'],
+            '我': ['我', '喔', '卧', '握'],
+            '他': ['他', '她', '它', '塔'],
+            '是': ['是', '事', '时', '室'],
+            '在': ['在', '再', '载', '债'],
+            '有': ['有', '又', '友', '右'],
+            '不': ['不', '步', '布', '部'],
+            '了': ['了', '乐', '勒', '咯'],
+            '说': ['说', '硕', '烁', '朔'],
+            '想': ['想', '响', '享', '项'],
+            '要': ['要', '药', '耀', '钥'],
+            '做': ['做', '作', '坐', '座'],
+            '去': ['去', '取', '趣', '区'],
+            '来': ['来', '赖', '莱', '睐'],
+            '好': ['好', '号', '耗', '浩'],
+            '的': ['的', '得', '地', '底'],
+            '和': ['和', '合', '何', '河'],
+            '就': ['就', '救', '旧', '究'],
+            '都': ['都', '兜', '抖', '斗'],
+            '会': ['会', '汇', '绘', '惠'],
+            '能': ['能', '嫩', '愣', '棱'],
+            '看': ['看', '堪', '刊', '勘'],
+            '听': ['听', '厅', '汀', '廷'],
+            '吃': ['吃', '迟', '池', '驰'],
+            '喝': ['喝', '呵', '嗬', '何'],
+            '玩': ['玩', '完', '顽', '烷'],
+            '学': ['学', '雪', '血', '穴'],
+            '工作': ['工作', '公作', '共作', '工事'],
+            '什么': ['什么', '什吗', '甚麼', '神么'],
+            '怎么': ['怎么', '怎末', '怎麼', '怎摸'],
+            '为什么': ['为什么', '为什麽', '为啥', '为何'],
+            '今天': ['今天', '今田', '今添', '金田'],
+            '明天': ['明天', '明田', '名天', '鸣天'],
+            '可以': ['可以', '可已', '克以', '课以'],
+            '不行': ['不行', '不形', '不兴', '不姓'],
+            '知道': ['知道', '知到', '支到', '指到'],
+            '明白': ['明白', '明百', '鸣白', '名白'],
+            '谢谢': ['谢谢', '歇歇', '写写', '屑屑'],
+            '不客气': ['不客气', '不客', '不气', '不刻'],
+        };
+
+        function levenshteinDistance(s1, s2) {
+            const costs = [];
+            for (let i = 0; i <= s1.length; i++) {
+                let lastValue = i;
+                for (let j = 0; j <= s2.length; j++) {
+                    if (i === 0) {
+                        costs[j] = j;
+                    } else if (j > 0) {
+                        let newValue = costs[j - 1];
+                        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+                            newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+                        }
+                        costs[j - 1] = lastValue;
+                        lastValue = newValue;
+                    }
+                }
+                if (i > 0) {
+                    costs[s2.length] = lastValue;
+                }
+            }
+            return costs[s2.length];
+        }
+
+        function getCandidates(word) {
+            const candidates = new Set();
+            candidates.add(word);
+
+            if (CANDIDATE_WORDS[word]) {
+                CANDIDATE_WORDS[word].forEach(w => candidates.add(w));
+            }
+
+            const allWords = Object.keys(CANDIDATE_WORDS);
+            for (const w of allWords) {
+                if (levenshteinDistance(word, w) <= 1) {
+                    candidates.add(w);
+                    if (CANDIDATE_WORDS[w]) {
+                        CANDIDATE_WORDS[w].forEach(c => candidates.add(c));
+                    }
+                }
+            }
+
+            const sorted = Array.from(candidates).sort((a, b) => {
+                const distA = levenshteinDistance(word, a);
+                const distB = levenshteinDistance(word, b);
+                return distA - distB;
+            });
+
+            return sorted.slice(0, 6);
+        }
+
+        function showWordCandidates(word, index, event) {
+            selectedWord = word;
+            selectedWordIndex = index;
+
+            const candidates = getCandidates(word);
+            wordCandidateItems.innerHTML = '';
+
+            candidates.forEach(candidate => {
+                const item = document.createElement('div');
+                item.className = 'word-candidate-item';
+                item.textContent = candidate;
+                item.onclick = () => replaceWord(candidate);
+                wordCandidateItems.appendChild(item);
+            });
+
+            const rect = event.target.getBoundingClientRect();
+            const containerRect = document.querySelector('.container').getBoundingClientRect();
+            
+            let top = rect.bottom - containerRect.top + 10;
+            let left = rect.left - containerRect.left;
+
+            if (top + 200 > containerRect.height) {
+                top = rect.top - containerRect.top - 200;
+            }
+
+            wordCandidatePopup.style.top = `${top}px`;
+            wordCandidatePopup.style.left = `${left}px`;
+            wordCandidatePopup.style.display = 'block';
+        }
+
+        function hideWordCandidates() {
+            wordCandidatePopup.style.display = 'none';
+            selectedWord = null;
+            selectedWordIndex = null;
+        }
+
+        function replaceWord(newWord) {
+            if (!selectedWord || selectedWordIndex === null) return;
+
+            const words = finalTranscript.split('');
+            let charIndex = 0;
+            let wordStart = 0;
+            let wordEnd = 0;
+
+            for (let i = 0; i < words.length; i++) {
+                if (/[\u4e00-\u9fa5]/.test(words[i])) {
+                    if (charIndex === selectedWordIndex) {
+                        wordStart = i;
+                        wordEnd = i + selectedWord.length;
+                        break;
+                    }
+                    charIndex++;
+                }
+            }
+
+            if (wordStart !== wordEnd) {
+                words.splice(wordStart, wordEnd - wordStart, ...newWord.split(''));
+                finalTranscript = words.join('');
+                renderTranscript();
+            }
+
+            hideWordCandidates();
+        }
+
+        function renderTranscript() {
+            let html = '';
+            let charIndex = 0;
+            
+            for (let i = 0; i < finalTranscript.length; i++) {
+                const char = finalTranscript[i];
+                if (/[\u4e00-\u9fa5]/.test(char)) {
+                    let word = '';
+                    let j = i;
+                    while (j < finalTranscript.length && /[\u4e00-\u9fa5]/.test(finalTranscript[j])) {
+                        word += finalTranscript[j];
+                        j++;
+                    }
+                    html += `<span class="word-highlight" data-word="${word}" data-index="${charIndex}" oncontextmenu="handleWordRightClick(event); return false;">${word}</span>`;
+                    charIndex++;
+                    i = j - 1;
+                } else {
+                    html += char;
+                }
+            }
+            
+            resultText.innerHTML = `<span class="final-text">${html}</span>`;
+        }
+
+        function handleWordRightClick(event) {
+            const target = event.target;
+            if (target.classList.contains('word-highlight')) {
+                const word = target.dataset.word;
+                const index = parseInt(target.dataset.index);
+                showWordCandidates(word, index, event);
+            }
+        }
+
+        function handleTouchStart(event) {
+            const target = event.target;
+            if (target.classList.contains('word-highlight')) {
+                const now = Date.now();
+                if (now - lastTouchTime < 300) {
+                    clearTimeout(longPressTimer);
+                    hideWordCandidates();
+                    return;
+                }
+                lastTouchTime = now;
+
+                longPressTimer = setTimeout(() => {
+                    const word = target.dataset.word;
+                    const index = parseInt(target.dataset.index);
+                    showWordCandidates(word, index, event);
+                }, 500);
+            }
+        }
+
+        function handleTouchEnd() {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+            }
+        }
+
+        function respeakCurrentSentence() {
+            hideWordCandidates();
+            stopRecording();
+            
+            setTimeout(() => {
+                startRecording();
+            }, 500);
+        }
+
+        const COMMANDS = {
+            PERIOD: {
+                keywords: ['句号', '句点', '点号', '圆点'],
+                action: () => insertText('。')
+            },
+            NEWLINE: {
+                keywords: ['换行', '另起一行', '新行'],
+                action: () => insertText('\n')
+            },
+            DELETE: {
+                keywords: ['删除', '删掉', '移除'],
+                action: (match) => {
+                    const numMatch = match.match(/(\d+)个?字?/);
+                    const count = numMatch ? parseInt(numMatch[1]) : 1;
+                    deleteText(count);
+                }
+            },
+            CLEAR: {
+                keywords: ['清空', '清除', '删掉所有', '全部删除'],
+                action: () => clearText()
+            },
+            SEND: {
+                keywords: ['发送', '提交', '输入文字', '打字'],
+                action: () => {
+                    if (typeBtn && !typeBtn.disabled) {
+                        typeBtn.click();
+                    }
+                }
+            }
+        };
+
+        function parseCommand(text) {
+            const trimmed = text.trim();
+            if (!trimmed) return null;
+
+            for (const [cmdName, cmdConfig] of Object.entries(COMMANDS)) {
+                for (const keyword of cmdConfig.keywords) {
+                    if (trimmed.includes(keyword)) {
+                        return {
+                            name: cmdName,
+                            keyword: keyword,
+                            match: trimmed,
+                            action: () => cmdConfig.action(trimmed)
+                        };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function isPureCommand(text) {
+            const trimmed = text.trim();
+            if (!trimmed) return false;
+
+            for (const cmdConfig of Object.values(COMMANDS)) {
+                for (const keyword of cmdConfig.keywords) {
+                    if (trimmed === keyword || trimmed.startsWith(keyword)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function insertText(text) {
+            finalTranscript += text;
+            renderTranscript();
+            showCommandHint(`已执行指令：插入 "${text}"`);
+        }
+
+        function deleteText(count) {
+            finalTranscript = finalTranscript.slice(0, -count);
+            renderTranscript();
+            showCommandHint(`已执行指令：删除 ${count} 个字`);
+        }
+
+        function clearText() {
+            finalTranscript = '';
+            renderTranscript();
+            showCommandHint('已执行指令：清空文本');
+        }
+
+        function showCommandHint(message) {
+            if (!commandHintElement) {
+                commandHintElement = document.createElement('div');
+                commandHintElement.id = 'commandHint';
+                commandHintElement.className = 'command-hint';
+                document.querySelector('.container').appendChild(commandHintElement);
+            }
+            commandHintElement.textContent = message;
+            commandHintElement.style.opacity = '1';
+            setTimeout(() => {
+                commandHintElement.style.opacity = '0';
+            }, 2000);
+        }
+
+        function initWebSpeech() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                console.log('Web Speech API not supported');
+                return null;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'zh-CN';
+
+            return recognition;
+        }
+
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const resultText = document.getElementById('resultText');
+        const resultArea = document.getElementById('resultArea');
+        const recordBtn = document.getElementById('recordBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const typeBtn = document.getElementById('typeBtn');
+        const errorMessage = document.getElementById('errorMessage');
+        const streamingModeToggle = document.getElementById('streamingMode');
+        const modeText = document.getElementById('modeText');
+        wordCandidatePopup = document.getElementById('wordCandidatePopup');
+        wordCandidateItems = document.getElementById('wordCandidateItems');
+        respeakBtn = document.getElementById('respeakBtn');
+
+        respeakBtn.onclick = respeakCurrentSentence;
+
+        document.addEventListener('click', (event) => {
+            if (!wordCandidatePopup.contains(event.target)) {
+                hideWordCandidates();
+            }
+        });
+
+        resultArea.addEventListener('touchstart', handleTouchStart, { passive: true });
+        resultArea.addEventListener('touchend', handleTouchEnd);
+        resultArea.addEventListener('touchcancel', handleTouchEnd);
+
+        function initSocket() {
+            socket = io();
+
+            socket.on('connect', () => {
+                console.log('Connected to server');
+                statusDot.classList.add('connected');
+                statusText.textContent = '已连接';
+                hideError();
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Disconnected from server');
+                statusDot.classList.remove('connected', 'streaming');
+                statusDot.classList.add('error');
+                statusText.textContent = '连接断开';
+            });
+
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                statusDot.classList.remove('connected', 'streaming');
+                statusDot.classList.add('error');
+                statusText.textContent = '连接失败';
+                showError('无法连接到服务器，请确保服务已启动');
+            });
+
+            socket.on('streaming_started', (data) => {
+                console.log('Streaming started:', data);
+                isStreaming = true;
+                statusDot.classList.add('streaming');
+                statusText.textContent = '正在录音...';
+            });
+
+            socket.on('streaming_result', (data) => {
+                console.log('Streaming result:', data);
+                const newTranscript = data.processed ? data.processed.trim() : '';
+                
+                if (newTranscript) {
+                    const previousTranscript = finalTranscript.trim();
+                    
+                    let shouldUpdate = true;
+                    let updateReason = '';
+                    
+                    if (newTranscript.length <= 1) {
+                        shouldUpdate = false;
+                        updateReason = 'too_short';
+                    } else if (newTranscript === previousTranscript) {
+                        shouldUpdate = false;
+                        updateReason = 'duplicate';
+                    } else if (newTranscript.length < previousTranscript.length && 
+                               previousTranscript.startsWith(newTranscript)) {
+                        shouldUpdate = false;
+                        updateReason = 'shorter_prefix';
+                    } else if (previousTranscript.includes(newTranscript) && 
+                               newTranscript.length < previousTranscript.length) {
+                        shouldUpdate = false;
+                        updateReason = 'new_is_substring';
+                    }
+                    
+                    if (shouldUpdate) {
+                        if (newTranscript.startsWith(previousTranscript)) {
+                            finalTranscript = newTranscript;
+                            updateReason = 'extends';
+                        } else if (previousTranscript && previousTranscript.length > 0) {
+                            if (!previousTranscript.includes(newTranscript) && 
+                                !newTranscript.includes(previousTranscript)) {
+                                const lastChar = previousTranscript[previousTranscript.length - 1];
+                                const separator = (lastChar === '。' || lastChar === '，' || lastChar === '！' || lastChar === '？') ? '' : '';
+                                finalTranscript = previousTranscript + separator + newTranscript;
+                                updateReason = 'append';
+                            } else if (newTranscript.includes(previousTranscript) && 
+                                       newTranscript.length > previousTranscript.length) {
+                                finalTranscript = newTranscript;
+                                updateReason = 'extends_from_substring';
+                            } else {
+                                shouldUpdate = false;
+                                updateReason = 'conflict_skipped';
+                            }
+                        } else {
+                            finalTranscript = newTranscript;
+                            updateReason = 'initial';
+                        }
+                        
+                        if (shouldUpdate) {
+                            resultText.innerHTML = `<span class="final-text">${finalTranscript}</span>`;
+                            console.log(`Text updated (${updateReason}): "${previousTranscript}" -> "${finalTranscript}"`);
+                            typeBtn.disabled = false;
+                        }
+                    } else {
+                        console.log(`Text update skipped (${updateReason}): "${newTranscript}"`);
+                    }
+                }
+                resultArea.scrollTop = resultArea.scrollHeight;
+            });
+
+            socket.on('streaming_error', (data) => {
+                console.error('Streaming error:', data);
+                showError(data.error || '识别服务出错');
+                statusDot.classList.remove('streaming');
+                statusDot.classList.add('error');
+                statusText.textContent = '识别出错';
+            });
+
+            socket.on('streaming_stopped', (data) => {
+                console.log('Streaming stopped:', data);
+                isStreaming = false;
+            });
+        }
+
+        function initMeterElements() {
+            audioMeterFill = document.getElementById('audioMeterFill');
+            audioMeterLabel = document.getElementById('audioMeterLabel');
+            audioMeterElement = document.getElementById('audioMeter');
+            silenceIndicatorElement = document.getElementById('silenceIndicator');
+            console.log('[DEBUG] initMeterElements called');
+            console.log('[DEBUG] audioMeterFill:', audioMeterFill);
+            console.log('[DEBUG] audioMeterLabel:', audioMeterLabel);
+            console.log('[DEBUG] audioMeterElement:', audioMeterElement);
+            console.log('[DEBUG] silenceIndicatorElement:', silenceIndicatorElement);
+            // 测试：页面加载时就显示能量条
+            if (audioMeterElement) {
+                audioMeterElement.style.display = 'block';
+                console.log('[DEBUG] Test: audioMeterElement displayed');
+            }
+        }
+
+        function updateAudioMeter() {
+            if (!analyser) {
+                console.log('[DEBUG] analyser is null');
+                return;
+            }
+            if (!audioMeterFill) {
+                console.log('[DEBUG] audioMeterFill is null');
+                return;
+            }
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            const average = sum / dataArray.length;
+            const normalizedValue = Math.min(100, (average / 128) * 100);
+
+            audioMeterFill.style.width = normalizedValue + '%';
+            if (audioMeterLabel) {
+                audioMeterLabel.textContent = Math.round(normalizedValue) + '%';
+            }
+
+            const now = Date.now();
+            
+            if (noiseFloorSamples.length < NOISE_FLOOR_SAMPLES && audioChunks.length < 5) {
+                noiseFloorSamples.push(normalizedValue);
+                console.log(`[DEBUG] Collecting noise sample ${noiseFloorSamples.length}: ${normalizedValue.toFixed(1)}%`);
+                if (noiseFloorSamples.length === NOISE_FLOOR_SAMPLES) {
+                    noiseFloor = noiseFloorSamples.reduce((a, b) => a + b, 0) / noiseFloorSamples.length;
+                    console.log(`Noise floor calibrated: ${noiseFloor.toFixed(1)}%`);
+                }
+            }
+            
+            const adjustedThreshold = Math.max(5, noiseFloor + 3);
+            const isSilent = normalizedValue < adjustedThreshold;
+            
+            console.log(`[DEBUG] Volume: ${normalizedValue.toFixed(1)}%, Threshold: ${adjustedThreshold.toFixed(1)}%, NoiseFloor: ${noiseFloor.toFixed(1)}%, isSilent: ${isSilent}`);
+            
+            const elapsedRecordingTime = recordingStartTime ? now - recordingStartTime : 0;
+            const hasMinRecording = elapsedRecordingTime >= MIN_RECORDING_DURATION;
+            
+            if (isSilent) {
+                consecutiveSilentSamples++;
+                console.log(`[DEBUG] Consecutive silent samples: ${consecutiveSilentSamples}/${REQUIRED_SILENT_SAMPLES}`);
+            } else {
+                consecutiveSilentSamples = 0;
+                silenceStartTime = null;
+            }
+            
+            const isStablySilent = consecutiveSilentSamples >= REQUIRED_SILENT_SAMPLES;
+            
+            if (isStablySilent && audioChunks.length > 0 && hasMinRecording) {
+                if (silenceStartTime === null) {
+                    silenceStartTime = now;
+                    console.log(`Silence detection started, threshold: ${adjustedThreshold.toFixed(1)}%, audioChunks: ${audioChunks.length}`);
+                }
+                const silenceDuration = now - silenceStartTime;
+                const remaining = Math.max(0, SILENCE_DURATION - silenceDuration);
+                console.log(`[DEBUG] Silence duration: ${silenceDuration}ms, remaining: ${remaining}ms`);
+                if (silenceIndicatorElement) {
+                    silenceIndicatorElement.textContent = `静音检测中... ${(remaining / 1000).toFixed(1)}s 后自动提交`;
+                    silenceIndicatorElement.className = 'silence-indicator active';
+                }
+
+                if (silenceDuration >= SILENCE_DURATION) {
+                    console.log(`Silence detected for ${silenceDuration}ms, audioChunks length: ${audioChunks.length}`);
+                    console.log('Auto-submitting due to silence...');
+                    stopRecording();
+                    return;
+                }
+            } else if (audioChunks.length > 0) {
+                if (!hasMinRecording && audioChunks.length > 0) {
+                    if (silenceIndicatorElement) {
+                        silenceIndicatorElement.textContent = `准备中... ${Math.ceil((MIN_RECORDING_DURATION - elapsedRecordingTime) / 1000)}s`;
+                        silenceIndicatorElement.className = 'silence-indicator silent';
+                    }
+                } else if (hasMinRecording) {
+                    if (silenceIndicatorElement) {
+                        silenceIndicatorElement.textContent = '正在接收语音...';
+                        silenceIndicatorElement.className = 'silence-indicator silent';
+                    }
+                }
+            }
+
+            if (isStreaming || mediaRecorder && mediaRecorder.state === 'recording') {
+                animationFrameId = requestAnimationFrame(updateAudioMeter);
+            }
+        }
+
+        function stopMeterAnimation() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            if (audioMeterFill) {
+                audioMeterFill.style.width = '0%';
+                audioMeterLabel.textContent = '0%';
+            }
+            if (audioMeterElement) {
+                audioMeterElement.style.display = 'none';
+            }
+            if (silenceIndicatorElement) {
+                silenceIndicatorElement.textContent = '';
+                silenceIndicatorElement.className = 'silence-indicator';
+            }
+            silenceStartTime = null;
+        }
+
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorMessage.classList.add('show');
+        }
+
+        function hideError() {
+            errorMessage.classList.remove('show');
+        }
+
+        async function startRecording() {
+            console.log('startRecording called');
+            hideError();
+            
+            recordingStartTime = Date.now();
+            noiseFloor = 0;
+            noiseFloorSamples = [];
+
+            if (streamingModeToggle.checked) {
+                startWebSpeechRecognition();
+                return;
+            }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showError('您的浏览器不支持录音功能，请使用Chrome或Firefox浏览器');
+                return;
+            }
+
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                console.log('Got audio stream');
+
+                audioContext = new AudioContext({ sampleRate: 16000 });
+
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                analyser.smoothingTimeConstant = 0.3;
+
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                source.connect(analyser);
+
+                if (!audioMeterFill || !audioMeterElement || !audioMeterLabel) {
+                    console.log('[DEBUG] Re-initializing meter elements');
+                    initMeterElements();
+                }
+                console.log('[DEBUG] audioMeterFill:', audioMeterFill, 'audioMeterElement:', audioMeterElement);
+                if (audioMeterElement) {
+                    audioMeterElement.style.display = 'block';
+                    console.log('[DEBUG] Set audioMeterElement display to block');
+                } else {
+                    console.error('[ERROR] audioMeterElement is still null!');
+                }
+                silenceStartTime = null;
+                if (analyser && audioMeterFill) {
+                    console.log('[DEBUG] Starting audio meter update');
+                    isStreaming = true;
+                    updateAudioMeter();
+                } else {
+                    console.error('[ERROR] Cannot start audio meter, analyser:', analyser, 'audioMeterFill:', audioMeterFill);
+                }
+
+                startMediaRecorder();
+
+                recordBtn.classList.add('recording');
+                recordBtn.disabled = true;
+                stopBtn.disabled = false;
+                statusDot.classList.add('streaming');
+                statusText.textContent = '正在录音...';
+                modeText.textContent = '普通模式';
+
+            } catch (err) {
+                console.error('Error starting recording:', err);
+                if (err.name === 'NotAllowedError') {
+                    showError('请允许访问麦克风权限');
+                } else if (err.name === 'NotFoundError') {
+                    showError('未找到麦克风设备');
+                } else {
+                    showError('启动录音失败: ' + err.message);
+                }
+            }
+        }
+
+        async function startWebSpeechRecognition() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+
+                audioContext = new AudioContext({ sampleRate: 16000 });
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                analyser.smoothingTimeConstant = 0.3;
+
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                source.connect(analyser);
+
+                if (!audioMeterFill || !audioMeterElement || !audioMeterLabel) {
+                    initMeterElements();
+                }
+
+                isStreaming = true;
+                updateAudioMeter();
+
+                socket.emit('start_streaming');
+
+                audioRecorder = audioContext.createScriptProcessor(4096, 1, 1);
+                source.connect(audioRecorder);
+                audioRecorder.connect(audioContext.destination);
+
+                let audioBuffer = [];
+                const CHUNK_SIZE = 32768;
+                let lastResult = '';
+
+                audioRecorder.onaudioprocess = (event) => {
+                    const inputBuffer = event.inputBuffer.getChannelData(0);
+                    audioBuffer.push(...inputBuffer);
+
+                    if (audioBuffer.length >= CHUNK_SIZE) {
+                        const chunk = audioBuffer.slice(0, CHUNK_SIZE);
+                        audioBuffer = audioBuffer.slice(CHUNK_SIZE / 2);
+
+                        const pcmData = new Int16Array(chunk.length);
+                        for (let i = 0; i < chunk.length; i++) {
+                            pcmData[i] = chunk[i] * 32767;
+                        }
+
+                        const base64Audio = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
+                        socket.emit('audio_data', {
+                            audio: base64Audio,
+                            format: 'pcm'
+                        });
+                    }
+                };
+
+                recordBtn.classList.add('recording');
+                recordBtn.disabled = true;
+                stopBtn.disabled = false;
+                statusDot.classList.add('streaming');
+                statusText.textContent = '正在录音...';
+                modeText.textContent = '实时识别模式';
+
+            } catch (err) {
+                console.error('Error starting streaming mode:', err);
+                showError('启动实时识别失败: ' + err.message);
+            }
+        }
+
+        function startMediaRecorder() {
+            let mimeType = 'audio/webm;codecs=opus';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'audio/webm';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'audio/mp4';
+                }
+            }
+
+            console.log('Using mimeType:', mimeType);
+            mediaRecorder = new MediaRecorder(mediaStream, { mimeType });
+            audioChunks = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onerror = (event) => {
+                console.error('MediaRecorder error:', event);
+                showError('录音出错: ' + event.error);
+                stopRecording();
+            };
+
+            mediaRecorder.onstop = () => {
+                console.log('MediaRecorder stopped');
+                sendFullAudio();
+            };
+
+            mediaRecorder.start(100);
+            console.log('MediaRecorder started');
+        }
+
+        async function sendFullAudio() {
+            if (audioChunks.length === 0) {
+                showError('没有录音数据');
+                return;
+            }
+
+            statusText.textContent = '正在识别...';
+            const blob = new Blob(audioChunks, { type: 'audio/webm' });
+            const reader = new FileReader();
+
+            reader.onloadend = async () => {
+                const base64 = reader.result.split(',')[1];
+                const hotwords = getHotwordsString();
+                const settings = getModeSettings();
+                
+                costStats.totalRequests++;
+                
+                const audioDuration = estimateDuration(base64.length * 0.75);
+                if (audioDuration < settings.minDuration) {
+                    console.log(`[Cost Control] Audio too short: ${audioDuration}ms (min: ${settings.minDuration}ms), skipping`);
+                    updateCostStatsDisplay();
+                    return;
+                }
+                
+                try {
+                    const data = await checkNetworkAndRecognize(base64, 'webm', hotwords);
+                    
+                    if (data === null) {
+                        updateCostStatsDisplay();
+                        return;
+                    }
+                    
+                    console.log('Recognition result:', data);
+
+                    if (data.success) {
+                        const newTranscript = data.processed.trim();
+                        
+                        if (settings.useCache) {
+                            const cachedResult = checkCache(newTranscript);
+                            if (cachedResult) {
+                                console.log('[Cost Control] Using cached result');
+                                updateCostStatsDisplay();
+                                return;
+                            }
+                            addToCache(newTranscript, data);
+                        }
+                        
+                        const textLength = newTranscript.length;
+                        const confidence = data.confidence || 1;
+                        
+                        if (textLength < settings.minTextLength || confidence < settings.minConfidence) {
+                            console.log(`[Cost Control] Result not valid: length=${textLength}, confidence=${confidence}, skipping`);
+                            costStats.filteredByConfidence++;
+                            updateCostStatsDisplay();
+                            return;
+                        }
+                        costStats.validRequests++;
+                        
+                        const command = parseCommand(newTranscript);
+                        if (command && isPureCommand(newTranscript)) {
+                            console.log(`Command detected: ${command.name} - "${command.match}"`);
+                            command.action();
+                        } else {
+                            const previousTranscript = finalTranscript.trim();
+                            
+                            if (newTranscript && previousTranscript && newTranscript.startsWith(previousTranscript)) {
+                                finalTranscript = newTranscript;
+                            } else if (newTranscript && previousTranscript && !previousTranscript.includes(newTranscript)) {
+                                finalTranscript = previousTranscript + ' ' + newTranscript;
+                            } else if (newTranscript) {
+                                finalTranscript = newTranscript;
+                            }
+                            
+                            renderTranscript();
+                            
+                            if (previousTranscript && previousTranscript !== finalTranscript) {
+                                console.log(`Text updated: "${previousTranscript}" -> "${finalTranscript}"`);
+                            }
+                        }
+                        
+                        typeBtn.disabled = false;
+                        statusDot.classList.remove('streaming');
+                        statusDot.classList.add('connected');
+                        statusText.textContent = '识别完成';
+                    } else {
+                        showError(data.error || '识别失败');
+                        statusDot.classList.remove('streaming');
+                        statusDot.classList.add('error');
+                        statusText.textContent = '识别失败';
+                    }
+                } catch (err) {
+                    console.error('Error sending audio:', err);
+                    if (!isOnline) {
+                        showError('网络已断开，音频已保存，联网后自动转写');
+                    } else {
+                        showError('发送录音失败: ' + err.message);
+                    }
+                    statusDot.classList.remove('streaming');
+                    statusDot.classList.add('error');
+                    statusText.textContent = '识别失败';
+                }
+            };
+
+            reader.readAsDataURL(blob);
+        }
+
+        function stopRecording() {
+            console.log('stopRecording called');
+
+            if (streamingModeToggle.checked) {
+                isStreaming = false;
+                
+                if (audioRecorder) {
+                    audioRecorder.disconnect();
+                    audioRecorder = null;
+                }
+                
+                socket.emit('stop_streaming');
+                
+                stopMeterAnimation();
+                statusText.textContent = '识别完成';
+                statusDot.classList.remove('streaming');
+                statusDot.classList.add('connected');
+                recordBtn.classList.remove('recording');
+                recordBtn.disabled = false;
+                stopBtn.disabled = true;
+                return;
+            }
+
+            if (audioRecorder && streamingModeToggle.checked) {
+                audioRecorder.disconnect();
+                audioRecorder = null;
+            }
+
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+            }
+
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+
+            if (isStreaming) {
+                isStreaming = false;
+            }
+
+            stopMeterAnimation();
+
+            recordBtn.classList.remove('recording');
+            recordBtn.disabled = false;
+            stopBtn.disabled = true;
+
+            if (!streamingModeToggle.checked) {
+                statusText.textContent = '正在识别...';
+            } else {
+                statusText.textContent = '正在识别...';
+            }
+        }
+
+        async function typeText() {
+            const text = finalTranscript.trim();
+            if (!text) return;
+
+            try {
+                const response = await fetch('/api/type', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    statusText.textContent = '文字已输入';
+                    setTimeout(() => {
+                        statusText.textContent = '已连接';
+                    }, 2000);
+                } else {
+                    showError('输入文字失败');
+                }
+            } catch (err) {
+                console.error('Error typing text:', err);
+                showError('输入文字失败: ' + err.message);
+            }
+        }
+
+        function clearText() {
+            finalTranscript = '';
+            interimTranscript = '';
+            resultText.innerHTML = '<span class="final-text"></span>';
+            typeBtn.disabled = true;
+            hideError();
+        }
+
+        streamingModeToggle.addEventListener('change', () => {
+            modeText.textContent = streamingModeToggle.checked ? '流式模式' : '普通模式';
+        });
+
+        initSocket();
+        initMeterElements();
+        initNetworkHandling();
+        initHotwordUI();
+        initCostControl();
+    </script>
+</body>
+</html>
